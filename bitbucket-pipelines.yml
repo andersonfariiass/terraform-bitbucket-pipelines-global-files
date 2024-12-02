@@ -1,0 +1,220 @@
+image: public.ecr.aws/docker/library/alpine:3.17.4
+
+definitions:
+  steps:
+    - step: &sec-scan
+        name: Security Scan
+        caches:
+          - docker
+        script:
+          - pipe: atlassian/git-secrets-scan:0.4.3
+
+    - step: &release
+        name: Release
+        deployment: production
+        image: alpine:3.17.3
+        caches:
+          - node
+        script:
+          - apk update
+          - apk add git
+          - apk add npm
+          - git remote set-url origin https://$BITBUCKET_USER:$BITBUCKET_APP_PASSWORD@bitbucket.org/$BITBUCKET_WORKSPACE/$BITBUCKET_REPO_SLUG.git
+          - npm install conventional-changelog-conventionalcommits @semantic-release/git @semantic-release/changelog
+          - npx semantic-release@18
+
+    - step: &test-pr-workflow
+        name: Pipeline Script Tests - Pull Requests Workflow
+        caches:
+          - docker
+        clone:
+          enabled: false
+        condition:
+          changesets:
+            includePaths:
+              - "bitbucket-pipelines.yml"
+              - "pipeline-scripts/0-*.sh"
+              - "pipeline-scripts/1-*.sh"
+              - "pipeline-scripts/2-*.sh"
+              - "pipeline-scripts/3-*.sh"
+              - "pipeline-scripts/4-*.sh"
+        script:
+          - pipe: atlassian/trigger-pipeline:5.5.1
+            variables:
+              BITBUCKET_USERNAME: $BITBUCKET_USER
+              BITBUCKET_APP_PASSWORD: $BITBUCKET_APP_PASSWORD
+              REPOSITORY: "terraform-aws-brlink-vpc"
+              REF_TYPE: "branch"
+              REF_NAME: "develop"
+              CUSTOM_PIPELINE_NAME: "test-basic-workflow"
+              WAIT: "true"
+              PIPELINE_VARIABLES: >
+                [{
+                  "key": "GIT_BRANCH_TERRAFORM_GLOBAL_PRIVATE_TESTES",
+                  "value": "$BITBUCKET_BRANCH"
+                }]
+
+    - step: &test-hotfix-release-workflow
+        name: Pipeline Script Tests - Hotfix/Release Workflow
+        caches:
+          - docker
+        clone:
+          enabled: false
+        condition:
+          changesets:
+            includePaths:
+              - "pipeline-scripts/check-release-branch.sh"
+              - "pipeline-scripts/terraform-apply-destroy.sh"
+              - "pipeline-scripts/terraform-force-destroy.sh"
+
+        script:
+          - pipe: atlassian/trigger-pipeline:5.5.1
+            variables:
+              BITBUCKET_USERNAME: $BITBUCKET_USER
+              BITBUCKET_APP_PASSWORD: $BITBUCKET_APP_PASSWORD
+              REPOSITORY: "terraform-aws-brlink-vpc"
+              REF_TYPE: "branch"
+              REF_NAME: "release/manater_para_testes"
+              CUSTOM_PIPELINE_NAME: "test-hotfix-release-workflow"
+              WAIT: "true"
+              PIPELINE_VARIABLES: >
+                [{
+                  "key": "GIT_BRANCH_TERRAFORM_GLOBAL_PRIVATE_TESTES",
+                  "value": "$BITBUCKET_BRANCH"
+                }]
+
+    - step: &terraform-plan-all-tfvars-workflow
+        name: Pipeline Script Tests - Plann All TFVars Workflow
+        caches:
+          - docker
+        clone:
+          enabled: false
+        condition:
+          changesets:
+            includePaths:
+              - "pipeline-scripts/terraform-plan-all-tfvars.sh"
+
+        script:
+          - pipe: atlassian/trigger-pipeline:5.5.1
+            variables:
+              BITBUCKET_USERNAME: $BITBUCKET_USER
+              BITBUCKET_APP_PASSWORD: $BITBUCKET_APP_PASSWORD
+              REPOSITORY: "terraform-aws-brlink-vpc"
+              REF_TYPE: "branch"
+              REF_NAME: "develop"
+              CUSTOM_PIPELINE_NAME: "test-terraform-plan-all-tfvars-workflow"
+              WAIT: "true"
+              PIPELINE_VARIABLES: >
+                [{
+                  "key": "GIT_BRANCH_TERRAFORM_GLOBAL_PRIVATE_TESTES",
+                  "value": "$BITBUCKET_BRANCH"
+                }]
+
+    - step: &terraform-apply-and-destroy-workflow
+        name: Pipeline Script Tests - Apply and Destroy Workflow
+        caches:
+          - docker
+        clone:
+          enabled: false
+        condition:
+          changesets:
+            includePaths:
+              - "pipeline-scripts/terraform-apply.sh"
+              - "pipeline-scripts/terraform-plan-destroy.sh"
+              - "pipeline-scripts/terraform-destroy.sh"
+
+        script:
+          - pipe: atlassian/trigger-pipeline:5.5.1
+            variables:
+              BITBUCKET_USERNAME: $BITBUCKET_USER
+              BITBUCKET_APP_PASSWORD: $BITBUCKET_APP_PASSWORD
+              REPOSITORY: "terraform-aws-brlink-vpc"
+              REF_TYPE: "branch"
+              REF_NAME: "develop"
+              CUSTOM_PIPELINE_NAME: "test-terraform-apply-and-destroy-workflow"
+              WAIT: "true"
+              PIPELINE_VARIABLES: >
+                [{
+                  "key": "GIT_BRANCH_TERRAFORM_GLOBAL_PRIVATE_TESTES",
+                  "value": "$BITBUCKET_BRANCH"
+                }]
+
+    - step: &apply-workflow
+        name: Pipeline Script Tests - Apply Workflow
+        caches:
+          - docker
+        clone:
+          enabled: false
+        condition:
+          changesets:
+            includePaths:
+              - "pipeline-scripts/0-*.sh"
+              - "pipeline-scripts/check-apply-branch.sh"
+              - "pipeline-scripts/infracost.sh"
+
+        script:
+          - pipe: atlassian/trigger-pipeline:5.5.1
+            variables:
+              BITBUCKET_USERNAME: $BITBUCKET_USER
+              BITBUCKET_APP_PASSWORD: $BITBUCKET_APP_PASSWORD
+              REPOSITORY: "terraform-aws-brlink-vpc"
+              REF_TYPE: "branch"
+              REF_NAME: "apply/develop"
+              CUSTOM_PIPELINE_NAME: "test-apply-workflow"
+              WAIT: "true"
+              PIPELINE_VARIABLES: >
+                [{
+                  "key": "GIT_BRANCH_TERRAFORM_GLOBAL_PRIVATE_TESTES",
+                  "value": "$BITBUCKET_BRANCH"
+                }]
+
+    - step: &destroy-custom-workflow
+        name: Pipeline Script Tests - Destroy Custom Workflow
+        caches:
+          - docker
+        clone:
+          enabled: false
+        condition:
+          changesets:
+            includePaths:
+              - "pipeline-scripts/terraform-apply.sh"
+              - "pipeline-scripts/terraform-destroy-custom-build.sh"
+
+        script:
+          - pipe: atlassian/trigger-pipeline:5.5.1
+            variables:
+              BITBUCKET_USERNAME: $BITBUCKET_USER
+              BITBUCKET_APP_PASSWORD: $BITBUCKET_APP_PASSWORD
+              REPOSITORY: "terraform-aws-brlink-vpc"
+              REF_TYPE: "branch"
+              REF_NAME: "develop"
+              CUSTOM_PIPELINE_NAME: "terraform-destroy-custom"
+              WAIT: "true"
+              PIPELINE_VARIABLES: >
+                [{
+                  "key": "GIT_BRANCH_TERRAFORM_GLOBAL_PRIVATE_TESTES",
+                  "value": "$BITBUCKET_BRANCH"
+                }]
+
+pipelines:
+  branches:
+    "feature/*":
+      - step: *test-pr-workflow
+      - parallel:
+          fail-fast: true
+          steps:
+            - step: *terraform-plan-all-tfvars-workflow
+            - step: *test-hotfix-release-workflow
+      - step: *apply-workflow
+
+  pull-requests:
+    "**":
+      - step: *test-pr-workflow
+      - parallel:
+          fail-fast: true
+          steps:
+            - step: *terraform-plan-all-tfvars-workflow
+            - step: *test-hotfix-release-workflow
+      - step: *apply-workflow
+      - step: *terraform-apply-and-destroy-workflow
+      - step: *destroy-custom-workflow
